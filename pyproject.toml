@@ -24,6 +24,8 @@ dependencies = [
     "huggingface-hub>=0.30.2",
     "datasets>=3.5.0",
     "ipython>=8.18.1",
+    "wandb>=0.16.0",
+    "typing-extensions>=4.8.0",
 ]
 
 [dependency-groups]
