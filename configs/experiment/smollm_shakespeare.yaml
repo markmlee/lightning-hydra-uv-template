@@ -1,0 +1,54 @@
+# @package _global_
+
+# to execute this experiment run:
+# uv run src/train.py experiment=smollm_shakespeare
+
+defaults:
+  - override /data: tinyshakespeare
+  - override /model: smollm
+  - override /callbacks: language_modeling  # Use language modeling callbacks (monitors val/loss)
+  - override /trainer: gpu  # Use GPU trainer by default
+  - override /logger: wandb
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+tags: ["smollm", "shakespeare", "finetuning", "135M"]
+
+seed: 42
+
+trainer:
+  min_epochs: 1
+  max_epochs: 10  # Fewer epochs for fine-tuning pretrained models
+  gradient_clip_val: 1.0  # Standard for transformers to prevent exploding gradients
+  accumulate_grad_batches: 4  # Effective batch size = batch_size * accumulate_grad_batches
+  val_check_interval: 0.25  # Run validation 4 times per epoch for better monitoring
+  log_every_n_steps: 10  # Log metrics every 10 steps
+
+model:
+  model_name: "HuggingFaceTB/SmolLM-135M"
+  optimizer:
+    lr: 3.0e-5  # Conservative learning rate for fine-tuning
+    weight_decay: 0.01
+    betas: [0.9, 0.999]
+  scheduler:
+    T_max: 5  # Match max_epochs
+    eta_min: 1.0e-6
+  compile: false  # Set to true if using PyTorch 2.0+ for speedup
+
+data:
+  tokenizer_name: "HuggingFaceTB/SmolLM-135M"
+  max_length: 256  # Shorter sequences for faster training (can increase to 512)
+  batch_size: 4  # Small batch size due to model size; increase if you have more GPU memory
+  num_workers: 4
+  pin_memory: true
+  persistent_workers: true
+  train_val_test_split: [0.9, 0.05, 0.05]
+
+logger:
+  wandb:
+    name: "smollm-shakespeare-baseline"  # Override from command line if needed
+    tags: ${tags}
+    group: "smollm-finetuning"
+    project: "LLM_finetuning"
+    entity: "moonrobotics"

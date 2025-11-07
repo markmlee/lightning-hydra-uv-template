@@ -1,0 +1,56 @@
+# @package _global_
+
+# to execute this experiment run:
+# uv run src/train.py experiment=smollm_shakespeare_optimized
+
+# OPTIMIZED CONFIG FOR 24GB GPU
+# Expected GPU usage: ~18-20GB
+# Training speed: ~2-3x faster than baseline
+
+defaults:
+  - override /data: tinyshakespeare
+  - override /model: smollm
+  - override /callbacks: language_modeling
+  - override /trainer: gpu
+  - override /logger: wandb
+
+tags: ["smollm", "shakespeare", "finetuning", "135M", "optimized"]
+
+seed: 42
+
+trainer:
+  min_epochs: 1
+  max_epochs: 10
+  gradient_clip_val: 1.0
+  accumulate_grad_batches: 2  # Reduced since we're increasing batch_size
+  val_check_interval: 0.25
+  log_every_n_steps: 10
+  precision: "16-mixed"  # Mixed precision training for 2x speedup
+
+model:
+  model_name: "HuggingFaceTB/SmolLM-135M"
+  optimizer:
+    lr: 3.0e-5
+    weight_decay: 0.01
+    betas: [0.9, 0.999]
+  scheduler:
+    T_max: 10
+    eta_min: 1.0e-6
+  compile: false  # Set to true for PyTorch 2.0+ (additional 10-20% speedup)
+
+data:
+  tokenizer_name: "HuggingFaceTB/SmolLM-135M"
+  max_length: 512  # Doubled from 256 for better context
+  batch_size: 20  # Increased from 4 (uses 21GB/out of 25GB of GPU memory)
+  num_workers: 8  # Increased for faster data loading
+  pin_memory: true
+  persistent_workers: true
+  train_val_test_split: [0.9, 0.05, 0.05]
+
+logger:
+  wandb:
+    name: "smollm-shakespeare-b20,n8,p16"
+    tags: ${tags}
+    group: "smollm-finetuning"
+    project: "LLM_finetuning"
+    entity: "moonrobotics"

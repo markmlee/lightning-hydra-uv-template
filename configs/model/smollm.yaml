@@ -1,0 +1,22 @@
+_target_: src.models.smollm_module.SmolLMLitModule
+
+# HuggingFace model name
+model_name: "HuggingFaceTB/SmolLM-135M"
+
+# Optimizer configuration
+optimizer:
+  _target_: torch.optim.AdamW
+  _partial_: true
+  lr: 5.0e-5  # Learning rate for fine-tuning (conservative)
+  weight_decay: 0.01
+  betas: [0.9, 0.999]
+
+# Learning rate scheduler
+scheduler:
+  _target_: torch.optim.lr_scheduler.CosineAnnealingLR
+  _partial_: true
+  T_max: 10  # Maximum number of epochs
+  eta_min: 1.0e-6  # Minimum learning rate
+
+# Compile model for faster training with pytorch 2.0
+compile: false
