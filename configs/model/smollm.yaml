@@ -3,6 +3,9 @@ _target_: src.models.smollm_module.SmolLMLitModule
 # HuggingFace model name
 model_name: "HuggingFaceTB/SmolLM-135M"
 
+# Dropout for regularization (prevents overfitting)
+dropout: 0.1  # Set to 0.0 to disable, increase to 0.2-0.3 for stronger regularization
+
 # Optimizer configuration
 optimizer:
   _target_: torch.optim.AdamW

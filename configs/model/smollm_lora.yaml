@@ -1,0 +1,26 @@
+_target_: src.models.smollm_lora_module.SmolLMLoRALitModule
+
+model_name: "HuggingFaceTB/SmolLM-135M"
+
+# LoRA configuration
+lora_r: 8  # LoRA rank (dimensionality of adapter matrices)
+lora_alpha: 16  # LoRA scaling parameter (typically 2*r)
+lora_dropout: 0.1  # Dropout for LoRA layers
+lora_target_modules: ["q_proj", "k_proj", "v_proj", "o_proj"]  # Attention projections
+
+# Model dropout
+dropout: 0.1
+
+# Optimizer configuration
+optimizer:
+  _target_: torch.optim.AdamW
+  _partial_: true
+  lr: 1.0e-3  # Higher LR for LoRA (only training small adapters)
+  weight_decay: 0.01
+  betas: [0.9, 0.999]
+
+# Learning rate scheduler (default: none, override in experiment configs)
+scheduler: null
+
+# PyTorch 2.0 compilation
+compile: false

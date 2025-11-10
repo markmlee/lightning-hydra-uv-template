@@ -1,0 +1,98 @@
+# @package _global_
+
+# Stage 1: Pre-fine-tune SmolLM on large Gutenberg Shakespeare corpus with LoRA
+# This stage trains LoRA adapters on the large corpus to learn general Shakespeare style
+#
+# Usage:
+#   uv run src/train.py experiment=smollm_shakespeare_stage1_gutenberg_lora
+#
+# Optional: Limit samples for testing
+#   uv run src/train.py experiment=smollm_shakespeare_stage1_gutenberg_lora \
+#       data.max_samples=10000
+#
+# After training, find the checkpoint at:
+#   logs/train/runs/YYYY-MM-DD_HH-MM-SS/checkpoints/last.ckpt
+
+defaults:
+  - override /data: shakespeare_gutenberg
+  - override /model: smollm_lora
+  - override /callbacks: language_modeling
+  - override /trainer: gpu
+  - override /logger: wandb
+
+tags: ["smollm", "shakespeare", "stage1", "gutenberg", "lora", "135M"]
+
+seed: 42
+
+trainer:
+  min_epochs: 1
+  max_epochs: 2              # Training for partial epoch only (~4 hours)
+  gradient_clip_val: 1.0
+  accumulate_grad_batches: 4  # Effective batch size = 16 * 4 = 64
+  val_check_interval: 0.25   # Validate 4 times per epoch (works for any dataset size!)
+  log_every_n_steps: 50
+  precision: "16-mixed"  # Use mixed precision for faster training
+
+model:
+  model_name: "HuggingFaceTB/SmolLM-135M"
+
+  # LoRA configuration (train only ~0.5% of parameters)
+  lora_r: 8
+  lora_alpha: 16
+  lora_dropout: 0.1
+  lora_target_modules: ["q_proj", "k_proj", "v_proj", "o_proj"]
+
+  # Model dropout
+  dropout: 0.1
+
+  # Optimizer (higher LR for LoRA)
+  optimizer:
+    lr: 1.0e-3  # LoRA can handle higher learning rates
+    weight_decay: 0.01
+    betas: [0.9, 0.999]
+
+  # Scheduler - ReduceLROnPlateau (adaptive based on validation loss)
+  scheduler:
+    _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
+    _partial_: true
+    mode: "min"            # Minimize validation loss
+    factor: 0.7            # Reduce LR to 70% when triggered (gentler than 0.5)
+    patience: 1            # Reduce after 1 validation without improvement (~1 hour)
+    threshold: 0.01        # Must improve by at least 0.01 to count as improvement
+    threshold_mode: "rel"  # Relative threshold (1% relative improvement)
+    cooldown: 0            # No cooldown between reductions (time is limited)
+    min_lr: 1.0e-5         # Don't go below this (still allows 2 reductions: 1e-3 -> 7e-4 -> 5e-4 -> 3.5e-4 -> min)
+
+  compile: false
+
+data:
+  tokenizer_name: "HuggingFaceTB/SmolLM-135M"
+  max_length: 256
+  batch_size: 32
+  num_workers: 8
+  pin_memory: true
+  persistent_workers: true
+  train_val_test_split: [0.95, 0.025, 0.025]
+  max_samples: null  # Set to e.g., 10000 for quick testing
+
+callbacks:
+  model_checkpoint:
+    monitor: "val/loss"
+    mode: "min"
+    save_top_k: 3           # Save 3 best checkpoints (more frequent saves)
+    save_last: true         # Always save the last checkpoint
+    every_n_train_steps: 5000  # Also save every 5k steps (~1 hour)
+
+  early_stopping:
+    monitor: "val/loss"
+    patience: 3            # Stop after 3 validations without improvement (~3 hours)
+    mode: "min"
+    min_delta: 0.005       # Must improve by at least 0.005
+
+logger:
+  wandb:
+    name: "smollm-stage1-gutenberg-lora_full"
+    tags: ${tags}
+    group: "smollm-two-stage"
+    project: "LLM_finetuning"
+    entity: "moonrobotics"

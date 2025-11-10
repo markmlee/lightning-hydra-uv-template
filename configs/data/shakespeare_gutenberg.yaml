@@ -1,0 +1,9 @@
+_target_: src.data.shakespeare_gutenberg_datamodule.ShakespeareGutenbergDataModule
+tokenizer_name: "HuggingFaceTB/SmolLM-135M"
+max_length: 512
+batch_size: 12
+num_workers: 8
+pin_memory: true
+persistent_workers: true
+train_val_test_split: [0.95, 0.025, 0.025]
+max_samples: null  # Set to a number (e.g., 10000) for testing, null for full dataset

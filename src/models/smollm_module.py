@@ -49,6 +49,7 @@ class SmolLMLitModule(LightningModule):
         optimizer: torch.optim.Optimizer,
         scheduler: LRScheduler | None,
         compile: bool,
+        dropout: float = 0.1,
     ) -> None:
         """Initialize a `SmolLMLitModule`.
 
@@ -56,6 +57,7 @@ class SmolLMLitModule(LightningModule):
         :param optimizer: The optimizer to use for training.
         :param scheduler: The learning rate scheduler to use for training.
         :param compile: Whether to compile the model with torch.compile (PyTorch 2.0+).
+        :param dropout: Dropout probability for regularization (default: 0.1).
         """
         super().__init__()
 
@@ -64,7 +66,24 @@ class SmolLMLitModule(LightningModule):
         self.save_hyperparameters(logger=False)
 
         # Load pretrained model from HuggingFace
-        self.model = AutoModelForCausalLM.from_pretrained(model_name)
+        # Note: For Llama-based models (SmolLM), dropout is controlled via config
+        from transformers import AutoConfig
+
+        config = AutoConfig.from_pretrained(model_name)
+        # Set dropout in model config (if supported by the architecture)
+        if hasattr(config, "attention_dropout"):
+            config.attention_dropout = dropout
+        if hasattr(config, "hidden_dropout_prob"):
+            config.hidden_dropout_prob = dropout
+        if hasattr(config, "resid_pdrop"):
+            config.resid_pdrop = dropout
+        if hasattr(config, "attn_pdrop"):
+            config.attn_pdrop = dropout
+
+        self.model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            config=config,
+        )
 
         # for averaging loss across batches
         self.train_loss = MeanMetric()

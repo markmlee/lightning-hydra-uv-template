@@ -90,9 +90,9 @@ def task_wrapper(task_func: Callable) -> Callable:
             if find_spec("wandb"):  # check if wandb is installed
                 import wandb
 
-                if wandb.run:
+                if wandb.run:  # type: ignore[attr-defined]
                     log.info("Closing wandb!")
-                    wandb.finish()
+                    wandb.finish()  # type: ignore[attr-defined]
 
         return metric_dict, object_dict
 

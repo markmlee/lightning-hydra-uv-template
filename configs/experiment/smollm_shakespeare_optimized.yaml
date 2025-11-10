@@ -20,7 +20,7 @@ seed: 42
 
 trainer:
   min_epochs: 1
-  max_epochs: 10
+  max_epochs: 20
   gradient_clip_val: 1.0
   accumulate_grad_batches: 2  # Reduced since we're increasing batch_size
   val_check_interval: 0.25
@@ -30,11 +30,11 @@ trainer:
 model:
   model_name: "HuggingFaceTB/SmolLM-135M"
   optimizer:
-    lr: 3.0e-5
-    weight_decay: 0.01
-    betas: [0.9, 0.999]
+    lr: 5.0e-5  # Reduced from 1e-4 (less aggressive learning)
+    weight_decay: 0.2  # Increased from 0.1 (stronger regularization)
+    betas: [0.9, 0.95]  # More conservative momentum
   scheduler:
-    T_max: 10
+    T_max: 20  # Match max_epochs
     eta_min: 1.0e-6
   compile: false  # Set to true for PyTorch 2.0+ (additional 10-20% speedup)
 
@@ -49,7 +49,7 @@ data:
 
 logger:
   wandb:
-    name: "smollm-shakespeare-b20,n8,p16"
+    name: "smollm-shakespeare-b20,n8,p16,ms512,lr5e-5_dropout0.1"
     tags: ${tags}
     group: "smollm-finetuning"
     project: "LLM_finetuning"

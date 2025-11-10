@@ -61,6 +61,11 @@ def evaluate(cfg: DictConfig) -> tuple[dict[str, Any], dict[str, Any]]:
 
     metric_dict = trainer.callback_metrics
 
+    # Log test metrics to file
+    log.info("Test metrics:")
+    for metric_name, metric_value in metric_dict.items():
+        log.info(f"  {metric_name}: {metric_value}")
+
     return metric_dict, object_dict
 
 

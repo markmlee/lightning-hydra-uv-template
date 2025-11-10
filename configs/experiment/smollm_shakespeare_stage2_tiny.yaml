@@ -1,0 +1,115 @@
+# @package _global_
+
+# Stage 2: Fine-tune on TinyShakespeare using Stage 1 checkpoint
+# This stage takes the LoRA-adapted model from Stage 1 and fine-tunes it on the specific
+# TinyShakespeare dataset for better adaptation to the target domain.
+#
+# IMPORTANT: You MUST provide the checkpoint path from Stage 1!
+#
+# Usage:
+#   # First, train Stage 1:
+#   uv run src/train.py experiment=smollm_shakespeare_stage1_gutenberg_lora
+#
+#   # Then, find the checkpoint path (look for the output directory):
+#   # logs/train/runs/YYYY-MM-DD_HH-MM-SS/checkpoints/last.ckpt
+#
+#   # Run Stage 2 with the checkpoint:
+#   uv run src/train.py experiment=smollm_shakespeare_stage2_tiny \
+#       ckpt_path="logs/train/runs/YYYY-MM-DD_HH-MM-SS/checkpoints/last.ckpt"
+#
+# Note: This config uses LoRA as well, continuing from Stage 1's LoRA adapters.
+# The checkpoint contains both the base model and the LoRA weights.
+
+defaults:
+  - override /data: tinyshakespeare
+  - override /model: smollm_lora  # Continue with LoRA
+  - override /callbacks: language_modeling
+  - override /trainer: gpu
+  - override /logger: wandb
+
+tags: ["smollm", "shakespeare", "stage2", "tiny", "lora", "135M"]
+
+seed: 42
+
+trainer:
+  min_epochs: 50
+  max_epochs: 50
+  gradient_clip_val: 1.0
+  accumulate_grad_batches: 4  # Effective batch size = 20 * 4 = 80
+  val_check_interval: 0.5  # Validate twice per epoch (dataset is small)
+  log_every_n_steps: 10
+  precision: "16-mixed"
+
+model:
+  model_name: "HuggingFaceTB/SmolLM-135M"  # Will be loaded from checkpoint
+
+  # LoRA configuration (same as Stage 1)
+  lora_r: 8
+  lora_alpha: 16
+  lora_dropout: 0.15  # Slightly higher dropout for small dataset
+  lora_target_modules: ["q_proj", "k_proj", "v_proj", "o_proj"]
+
+  # Model dropout
+  dropout: 0.15
+
+  # Optimizer (VERY low LR - we're fine-tuning an already fine-tuned model)
+  optimizer:
+    lr: 5.0e-3  # Much lower than Stage 1 (10x lower)
+    weight_decay: 0.1
+    betas: [0.9, 0.95]
+
+  # Scheduler (ReduceLROnPlateau - simple and effective)
+  scheduler:
+    _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
+    _partial_: true
+    mode: "min"
+    factor: 0.5
+    patience: 5
+    threshold: 0.01
+    threshold_mode: "rel"
+    cooldown: 0
+    min_lr: 1.0e-6
+
+  compile: false
+
+data:
+  tokenizer_name: "HuggingFaceTB/SmolLM-135M"
+  max_length: 512
+  batch_size: 20
+  num_workers: 8
+  pin_memory: true
+  persistent_workers: true
+  train_val_test_split: [0.9, 0.05, 0.05]
+
+callbacks:
+  model_checkpoint:
+    monitor: "val/loss"
+    mode: "min"
+    save_top_k: 3  # Save 3 best checkpoints
+    save_last: true
+
+  early_stopping:
+    monitor: "val/loss"
+    patience: 30  # High patience - let model train longer if loss is improving
+    mode: "min"
+
+  # Disable verbose model summary
+  model_summary:
+    max_depth: 0  # 0 = only show top-level summary, no layer details
+
+  # Override RichProgressBar with TQDMProgressBar to avoid checkpoint resume issues
+  rich_progress_bar:
+    _target_: pytorch_lightning.callbacks.TQDMProgressBar
+    refresh_rate: 10
+
+logger:
+  wandb:
+    name: "smollm-stage2-tiny-lora"
+    tags: ${tags}
+    group: "smollm-two-stage"
+    project: "LLM_finetuning"
+    entity: "moonrobotics"
+
+# NOTE: ckpt_path MUST be provided via command line!
+# Example:
+#   ckpt_path: "logs/train/runs/2025-11-07_XX-XX-XX/checkpoints/last.ckpt"

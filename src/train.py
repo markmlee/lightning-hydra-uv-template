@@ -1,4 +1,8 @@
+import os
 from typing import Any
+
+# Disable tokenizers parallelism warning when using DataLoader workers
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 import hydra
 from omegaconf import DictConfig
