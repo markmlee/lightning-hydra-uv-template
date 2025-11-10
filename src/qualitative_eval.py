@@ -4,14 +4,17 @@ This script loads both the baseline SmolLM-135M model and a fine-tuned checkpoin
 then generates text from both models given sample prompts to compare their outputs.
 
 Usage:
-    # Interactive mode
-    uv run src/qualitative_eval.py --checkpoint_path logs/train/runs/2025-11-07_23-52-31/checkpoints/last.ckpt
+    # Interactive mode with LoRA checkpoint (default)
+    uv run src/qualitative_eval.py --checkpoint_path logs/train/runs/2025-11-09_15-21-37/checkpoints/last.ckpt
+
+    # Interactive mode with full fine-tuned checkpoint (non-LoRA)
+    uv run src/qualitative_eval.py --checkpoint_path logs/train/runs/2025-11-07_20-46-13/checkpoints/last.ckpt --no_lora
 
     # With predefined Shakespeare prompts
-    uv run src/qualitative_eval.py --checkpoint_path logs/train/runs/2025-11-07_23-52-31/checkpoints/last.ckpt --shakespeare
+    uv run src/qualitative_eval.py --checkpoint_path CHECKPOINT_PATH --shakespeare
 
     # Custom prompt
-    uv run src/qualitative_eval.py --checkpoint_path logs/train/runs/2025-11-07_23-52-31/checkpoints/last.ckpt --prompt "To be or not to be"
+    uv run src/qualitative_eval.py --checkpoint_path CHECKPOINT_PATH --prompt "To be or not to be"
 """
 
 import argparse
@@ -25,8 +28,9 @@ from transformers import (
     PreTrainedTokenizer,
 )
 
-# Import your fine-tuned model class
+# Import your fine-tuned model classes
 from src.models.smollm_lora_module import SmolLMLoRALitModule
+from src.models.smollm_module import SmolLMLitModule
 
 
 def load_baseline_model(
@@ -54,11 +58,21 @@ def load_baseline_model(
 
 
 def load_finetuned_model(
-    checkpoint_path: str, device: str = "cuda"
+    checkpoint_path: str, device: str = "cuda", use_lora: bool = True
 ) -> tuple[PreTrainedModel, PreTrainedTokenizer]:
-    """Load the fine-tuned model from checkpoint."""
+    """Load the fine-tuned model from checkpoint.
+
+    Args:
+        checkpoint_path: Path to the checkpoint file
+        device: Device to load model on (cuda/cpu)
+        use_lora: If True, load as LoRA model. If False, load as full fine-tuned model.
+
+    Returns:
+        Tuple of (model, tokenizer)
+
+    """
     print(f"\n{'=' * 70}")
-    print("Loading Fine-Tuned Model")
+    print(f"Loading Fine-Tuned Model ({'LoRA' if use_lora else 'Full Fine-tuning'})")
     print(f"{'=' * 70}")
 
     checkpoint_path_obj = Path(checkpoint_path)
@@ -67,13 +81,19 @@ def load_finetuned_model(
 
     print(f"Loading checkpoint: {checkpoint_path_obj}")
 
-    # Load the Lightning checkpoint
-    lit_model = SmolLMLoRALitModule.load_from_checkpoint(
-        checkpoint_path,
-        map_location=device,
-    )
+    # Load appropriate module type
+    if use_lora:
+        lit_model = SmolLMLoRALitModule.load_from_checkpoint(
+            checkpoint_path,
+            map_location=device,
+        )
+    else:
+        lit_model = SmolLMLitModule.load_from_checkpoint(
+            checkpoint_path,
+            map_location=device,
+        )
 
-    # Extract the HuggingFace model (with LoRA adapters)
+    # Extract the HuggingFace model
     model = lit_model.model
     model = model.to(device)
     model.eval()
@@ -83,14 +103,17 @@ def load_finetuned_model(
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    # Print LoRA info
+    # Print model info
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     total_params = sum(p.numel() for p in model.parameters())
 
     print("✓ Loaded fine-tuned model from checkpoint")
     print(f"✓ Total parameters: {total_params:,}")
-    print(f"✓ Trainable parameters (LoRA): {trainable_params:,}")
-    print(f"✓ Trainable %: {100 * trainable_params / total_params:.2f}%")
+    if use_lora:
+        print(f"✓ Trainable parameters (LoRA): {trainable_params:,}")
+        print(f"✓ Trainable %: {100 * trainable_params / total_params:.2f}%")
+    else:
+        print("✓ Fine-tuning type: Full model fine-tuning")
     print(f"✓ Device: {device}")
 
     return model, tokenizer
@@ -304,6 +327,11 @@ def main() -> None:
         default="cuda" if torch.cuda.is_available() else "cpu",
         help="Device to use (cuda/cpu)",
     )
+    parser.add_argument(
+        "--no_lora",
+        action="store_true",
+        help="Load checkpoint as full fine-tuned model (not LoRA)",
+    )
 
     args = parser.parse_args()
 
@@ -313,7 +341,9 @@ def main() -> None:
 
     # Load models
     baseline_model, tokenizer = load_baseline_model(args.model_name, args.device)
-    finetuned_model, _ = load_finetuned_model(args.checkpoint_path, args.device)
+    finetuned_model, _ = load_finetuned_model(
+        args.checkpoint_path, args.device, use_lora=not args.no_lora
+    )
 
     # Determine mode
     if args.prompt:

@@ -6,8 +6,11 @@ This script evaluates models on three metrics:
 3. BLEU Score - How similar generated text is to reference text (TinyShakespeare)
 
 Usage:
-    # Evaluate fine-tuned model against baseline
-    uv run src/quantitative_eval.py --checkpoint_path logs/train/runs/2025-11-07_23-52-31/checkpoints/last.ckpt
+    # Evaluate LoRA fine-tuned model against baseline (default)
+    uv run src/quantitative_eval.py --checkpoint_path logs/train/runs/2025-11-09_15-21-37/checkpoints/last.ckpt
+
+    # Evaluate full fine-tuned model (non-LoRA) against baseline
+    uv run src/quantitative_eval.py --checkpoint_path logs/train/runs/2025-11-07_20-46-13/checkpoints/last.ckpt --no_lora
 
     # Use more samples for more accurate metrics
     uv run src/quantitative_eval.py --checkpoint_path CHECKPOINT_PATH --num_samples 1000
@@ -47,6 +50,7 @@ except ImportError:
     print("Install with: pip install nltk")
 
 from src.models.smollm_lora_module import SmolLMLoRALitModule
+from src.models.smollm_module import SmolLMLitModule
 
 
 def load_baseline_model(
@@ -74,11 +78,21 @@ def load_baseline_model(
 
 
 def load_finetuned_model(
-    checkpoint_path: str, device: str = "cuda"
+    checkpoint_path: str, device: str = "cuda", use_lora: bool = True
 ) -> tuple[PreTrainedModel, PreTrainedTokenizer]:
-    """Load the fine-tuned model from checkpoint."""
+    """Load the fine-tuned model from checkpoint.
+
+    Args:
+        checkpoint_path: Path to the checkpoint file
+        device: Device to load model on (cuda/cpu)
+        use_lora: If True, load as LoRA model. If False, load as full fine-tuned model.
+
+    Returns:
+        Tuple of (model, tokenizer)
+
+    """
     print(f"\n{'=' * 70}")
-    print("Loading Fine-Tuned Model")
+    print(f"Loading Fine-Tuned Model ({'LoRA' if use_lora else 'Full Fine-tuning'})")
     print(f"{'=' * 70}")
 
     checkpoint_path_obj = Path(checkpoint_path)
@@ -87,10 +101,17 @@ def load_finetuned_model(
 
     print(f"Loading: {checkpoint_path_obj}")
 
-    lit_model = SmolLMLoRALitModule.load_from_checkpoint(
-        checkpoint_path,
-        map_location=device,
-    )
+    # Load appropriate module type
+    if use_lora:
+        lit_model = SmolLMLoRALitModule.load_from_checkpoint(
+            checkpoint_path,
+            map_location=device,
+        )
+    else:
+        lit_model = SmolLMLitModule.load_from_checkpoint(
+            checkpoint_path,
+            map_location=device,
+        )
 
     model = lit_model.model
     model = model.to(device)
@@ -105,9 +126,12 @@ def load_finetuned_model(
 
     print("✓ Loaded fine-tuned checkpoint")
     print(f"✓ Total params: {total_params:,}")
-    print(
-        f"✓ Trainable (LoRA): {trainable_params:,} ({100 * trainable_params / total_params:.2f}%)"
-    )
+    if use_lora:
+        print(
+            f"✓ Trainable (LoRA): {trainable_params:,} ({100 * trainable_params / total_params:.2f}%)"
+        )
+    else:
+        print("✓ Fine-tuning type: Full model fine-tuning")
     print(f"✓ Device: {device}")
 
     return model, tokenizer
@@ -487,6 +511,11 @@ def main() -> None:
         action="store_true",
         help="Skip BLEU score computation (faster)",
     )
+    parser.add_argument(
+        "--no_lora",
+        action="store_true",
+        help="Load checkpoint as full fine-tuned model (not LoRA)",
+    )
 
     args = parser.parse_args()
 
@@ -500,7 +529,9 @@ def main() -> None:
 
     # Load models
     baseline_model, tokenizer = load_baseline_model(args.model_name, args.device)
-    finetuned_model, _ = load_finetuned_model(args.checkpoint_path, args.device)
+    finetuned_model, _ = load_finetuned_model(
+        args.checkpoint_path, args.device, use_lora=not args.no_lora
+    )
 
     # Load test data
     test_sequences = load_tinyshakespeare_test(
